@@ -1,3 +1,9 @@
+# Env (API 키 보호)
+./.env
+.env
+.env.*
+!.env.example
+
 # Logs
 logs
 *.log

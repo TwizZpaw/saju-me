@@ -1,7 +1,31 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
 import { buildSajuPrompt } from './buildSajuPrompt'
 import { askGemini } from './gemini'
+import { supabase } from './supabase'
+
+function formatGender(gender) {
+  if (gender === 'male') return '남성'
+  if (gender === 'female') return '여성'
+  return gender
+}
+
+function formatCalendar(calendarType) {
+  if (calendarType === 'solar') return '양력'
+  if (calendarType === 'lunar') return '음력'
+  return calendarType
+}
+
+function formatBirthTime(birthTime) {
+  if (!birthTime) return null
+  return birthTime.slice(0, 5)
+}
+
+function formatBirthDate(birthDate) {
+  if (!birthDate) return ''
+  const [year, month, day] = birthDate.split('-')
+  return `${year}.${month}.${day}`
+}
 
 function App() {
   const [name, setName] = useState('')
@@ -13,6 +37,38 @@ function App() {
   const [result, setResult] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [readings, setReadings] = useState([])
+  const [selectedId, setSelectedId] = useState(null)
+
+  const selectedReading = readings.find((reading) => reading.id === selectedId) ?? null
+
+  async function loadReadings() {
+    const { data, error: loadError } = await supabase
+      .from('saju_readings')
+      .select(
+        'id, name, birth_date, birth_time, gender, calendar_type, result, created_at',
+      )
+      .order('created_at', { ascending: false })
+
+    if (loadError) {
+      console.error(loadError)
+      return []
+    }
+
+    const next = data ?? []
+    setReadings(next)
+    return next
+  }
+
+  useEffect(() => {
+    loadReadings()
+  }, [])
+
+  function handleSelectReading(id) {
+    setSelectedId((current) => (current === id ? null : id))
+    setResult('')
+    setError('')
+  }
 
   async function handleAnalyze(e) {
     e.preventDefault()
@@ -25,6 +81,7 @@ function App() {
     setLoading(true)
     setError('')
     setResult('')
+    setSelectedId(null)
 
     try {
       const prompt = buildSajuPrompt({
@@ -36,6 +93,31 @@ function App() {
       })
       const text = await askGemini(prompt)
       setResult(text)
+
+      const { data: saved, error: saveError } = await supabase
+        .from('saju_readings')
+        .insert({
+          name,
+          birth_date: birthDate,
+          birth_time: birthTime || null,
+          gender,
+          calendar_type: calendarType,
+          result: text,
+        })
+        .select(
+          'id, name, birth_date, birth_time, gender, calendar_type, result, created_at',
+        )
+        .single()
+
+      if (saveError) {
+        throw saveError
+      }
+
+      await loadReadings()
+      if (saved?.id) {
+        setSelectedId(saved.id)
+        setResult('')
+      }
     } catch (err) {
       console.error(err)
       setError(err.message || '사주 해석 중 오류가 발생했습니다.')
@@ -49,6 +131,36 @@ function App() {
       <div className="app__veil" aria-hidden="true" />
       <div className="app__glow" aria-hidden="true" />
 
+      <aside className="sidebar" aria-label="저장된 사주 목록">
+        <p className="sidebar__title">기록</p>
+        {readings.length === 0 ? (
+          <p className="sidebar__empty">아직 저장된 사주가 없습니다.</p>
+        ) : (
+          <ul className="sidebar__list">
+            {readings.map((reading) => {
+              const isActive = reading.id === selectedId
+              return (
+                <li key={reading.id}>
+                  <button
+                    type="button"
+                    className={
+                      isActive ? 'sidebar__item is-active' : 'sidebar__item'
+                    }
+                    onClick={() => handleSelectReading(reading.id)}
+                    aria-pressed={isActive}
+                  >
+                    <span className="sidebar__name">{reading.name}</span>
+                    <span className="sidebar__meta">
+                      {formatBirthDate(reading.birth_date)}
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </aside>
+
       <main className="shell">
         <header className="hero">
           <p className="brand">사주</p>
@@ -57,6 +169,29 @@ function App() {
             생년월일과 시간을 입력하면, 당신만의 사주를 풀어 드립니다.
           </p>
         </header>
+
+        {selectedReading && (
+          <section className="archive" aria-live="polite">
+            <div className="archive__orb" aria-hidden="true" />
+            <p className="archive__eyebrow">저장된 사주</p>
+            <h2 className="archive__name">{selectedReading.name}</h2>
+            <p className="archive__facts">
+              <span>{formatBirthDate(selectedReading.birth_date)}</span>
+              {formatBirthTime(selectedReading.birth_time) && (
+                <>
+                  <span className="archive__dot" aria-hidden="true" />
+                  <span>{formatBirthTime(selectedReading.birth_time)}</span>
+                </>
+              )}
+              <span className="archive__dot" aria-hidden="true" />
+              <span>{formatGender(selectedReading.gender)}</span>
+              <span className="archive__dot" aria-hidden="true" />
+              <span>{formatCalendar(selectedReading.calendar_type)}</span>
+            </p>
+            <div className="archive__divider" aria-hidden="true" />
+            <pre className="archive__result">{selectedReading.result}</pre>
+          </section>
+        )}
 
         <form className="form" onSubmit={handleAnalyze}>
           <div className="form__grid">
@@ -145,7 +280,7 @@ function App() {
           {error && <p className="error" role="alert">{error}</p>}
         </form>
 
-        {result && (
+        {!selectedReading && result && (
           <section className="result" aria-live="polite">
             <h2 className="result__title">사주 해석 결과</h2>
             <pre className="result-text">{result}</pre>

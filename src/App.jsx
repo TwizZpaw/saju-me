@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import './App.css'
 import { buildSajuPrompt } from './buildSajuPrompt'
 import { askGemini } from './gemini'
-import { supabase } from './supabase'
+import { isSupabaseConfigured, requireSupabase } from './supabase'
 
 function formatGender(gender) {
   if (gender === 'male') return '남성'
@@ -43,7 +43,11 @@ function App() {
   const selectedReading = readings.find((reading) => reading.id === selectedId) ?? null
 
   async function loadReadings() {
-    const { data, error: loadError } = await supabase
+    if (!isSupabaseConfigured) {
+      return []
+    }
+
+    const { data, error: loadError } = await requireSupabase()
       .from('saju_readings')
       .select(
         'id, name, birth_date, birth_time, gender, calendar_type, result, created_at',
@@ -61,6 +65,12 @@ function App() {
   }
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setError(
+        'Supabase 환경 변수가 없습니다. Netlify에 VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY를 넣고 재배포하세요.',
+      )
+      return
+    }
     loadReadings()
   }, [])
 
@@ -86,7 +96,7 @@ function App() {
     const normalizedBirthTime = birthTime || null
 
     try {
-      let existingQuery = supabase
+      let existingQuery = requireSupabase()
         .from('saju_readings')
         .select(
           'id, name, birth_date, birth_time, gender, calendar_type, result, created_at',
@@ -125,7 +135,7 @@ function App() {
       const text = await askGemini(prompt)
       setResult(text)
 
-      const { data: saved, error: saveError } = await supabase
+      const { data: saved, error: saveError } = await requireSupabase()
         .from('saju_readings')
         .insert({
           name,

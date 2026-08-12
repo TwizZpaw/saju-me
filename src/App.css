@@ -3,6 +3,8 @@
   --sidebar-width: 216px;
   position: relative;
   isolation: isolate;
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
   padding: clamp(28px, 6vw, 64px) clamp(18px, 4vw, 32px) 72px;
   background-image: url('./assets/bg.png');
@@ -335,6 +337,7 @@
   flex-direction: column;
   gap: 8px;
   min-width: 0;
+  max-width: 100%;
 }
 
 .field--wide {
@@ -365,6 +368,8 @@
 .field input,
 .field select {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 48px;
   padding: 0 14px;
   border: 1px solid var(--field-border);
@@ -373,6 +378,7 @@
   color: var(--ink);
   font-size: 0.98rem;
   outline: none;
+  box-sizing: border-box;
   transition:
     border-color 0.25s var(--ease),
     box-shadow 0.25s var(--ease),
@@ -413,6 +419,18 @@
 .field input[type='date'],
 .field input[type='time'] {
   color-scheme: dark;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.field input[type='date']::-webkit-date-and-time-value,
+.field input[type='time']::-webkit-date-and-time-value {
+  text-align: left;
 }
 
 .segment {
@@ -709,13 +727,19 @@
 }
 
 @media (max-width: 959px) {
+  .shell {
+    order: 1;
+    width: min(100%, var(--shell-max));
+  }
+
   .sidebar {
+    order: 2;
     position: relative;
     top: 0;
     left: 0;
     width: min(100%, var(--shell-max));
     max-height: none;
-    margin: 0 auto 20px;
+    margin: 28px auto 0;
   }
 
   .sidebar__list {
@@ -737,6 +761,8 @@
 
   .form__grid {
     grid-template-columns: 1fr;
+    width: 100%;
+    max-width: 100%;
   }
 
   .form__actions {
@@ -747,6 +773,17 @@
   .field:nth-child(1),
   .field--wide {
     grid-column: 1;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .field input[type='date'],
+  .field input[type='time'],
+  .field input,
+  .field select {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
 
   .brand {

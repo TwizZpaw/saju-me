@@ -3,6 +3,7 @@ import './App.css'
 import { buildSajuPrompt } from './buildSajuPrompt'
 import { askGemini } from './gemini'
 import { isSupabaseConfigured, requireSupabase } from './supabase'
+import { useAuth } from './useAuth'
 
 function formatGender(gender) {
   if (gender === 'male') return '남성'
@@ -27,7 +28,23 @@ function formatBirthDate(birthDate) {
   return `${year}.${month}.${day}`
 }
 
+function getUserLabel(user) {
+  return (
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.email ||
+    '사용자'
+  )
+}
+
 function App() {
+  const {
+    user,
+    loading: authLoading,
+    signInWithGoogle,
+    signOut,
+  } = useAuth()
+
   const [name, setName] = useState('')
   const [birthDate, setBirthDate] = useState('')
   const [birthTime, setBirthTime] = useState('')
@@ -37,6 +54,7 @@ function App() {
   const [result, setResult] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [authBusy, setAuthBusy] = useState(false)
   const [error, setError] = useState('')
   const [readings, setReadings] = useState([])
   const [selectedId, setSelectedId] = useState(null)
@@ -47,14 +65,15 @@ function App() {
   const isEditing = Boolean(editingId)
 
   async function loadReadings() {
-    if (!isSupabaseConfigured) {
+    if (!isSupabaseConfigured || !user) {
+      setReadings([])
       return []
     }
 
     const { data, error: loadError } = await requireSupabase()
       .from('saju_readings')
       .select(
-        'id, name, birth_date, birth_time, gender, calendar_type, result, created_at',
+        'id, name, birth_date, birth_time, gender, calendar_type, result, created_at, user_id',
       )
       .order('created_at', { ascending: false })
 
@@ -75,8 +94,17 @@ function App() {
       )
       return
     }
+
+    if (!user) {
+      setReadings([])
+      setSelectedId(null)
+      setEditingId(null)
+      return
+    }
+
+    setError('')
     loadReadings()
-  }, [])
+  }, [user])
 
   function clearForm() {
     setName('')
@@ -86,6 +114,35 @@ function App() {
     setCalendarType('')
     setResult('')
     setEditResult('')
+  }
+
+  async function handleGoogleLogin() {
+    setAuthBusy(true)
+    setError('')
+    try {
+      await signInWithGoogle()
+    } catch (err) {
+      console.error(err)
+      setError(err.message || 'Google 로그인에 실패했습니다.')
+      setAuthBusy(false)
+    }
+  }
+
+  async function handleSignOut() {
+    setAuthBusy(true)
+    setError('')
+    try {
+      await signOut()
+      clearForm()
+      setSelectedId(null)
+      setEditingId(null)
+      setReadings([])
+    } catch (err) {
+      console.error(err)
+      setError(err.message || '로그아웃에 실패했습니다.')
+    } finally {
+      setAuthBusy(false)
+    }
   }
 
   function handleSelectReading(id) {
@@ -130,7 +187,7 @@ function App() {
   async function handleUpdate(e) {
     e.preventDefault()
 
-    if (!editingId) return
+    if (!editingId || !user) return
 
     if (!name || !birthDate || !gender || !calendarType || !editResult.trim()) {
       setError('이름, 생년월일, 성별, 양력/음력, 결과 내용을 모두 입력해 주세요.')
@@ -153,7 +210,7 @@ function App() {
         })
         .eq('id', editingId)
         .select(
-          'id, name, birth_date, birth_time, gender, calendar_type, result, created_at',
+          'id, name, birth_date, birth_time, gender, calendar_type, result, created_at, user_id',
         )
         .single()
 
@@ -175,7 +232,7 @@ function App() {
   }
 
   async function handleDelete() {
-    if (!selectedReading) return
+    if (!selectedReading || !user) return
 
     const ok = window.confirm(
       `"${selectedReading.name}" 사주 기록을 삭제할까요? 이 작업은 되돌릴 수 없습니다.`,
@@ -219,6 +276,11 @@ function App() {
       return
     }
 
+    if (!user) {
+      setError('사주를 보려면 Google 로그인이 필요합니다.')
+      return
+    }
+
     if (!name || !birthDate || !gender || !calendarType) {
       setError('이름, 생년월일, 성별, 양력/음력을 모두 입력해 주세요.')
       return
@@ -235,12 +297,13 @@ function App() {
       let existingQuery = requireSupabase()
         .from('saju_readings')
         .select(
-          'id, name, birth_date, birth_time, gender, calendar_type, result, created_at',
+          'id, name, birth_date, birth_time, gender, calendar_type, result, created_at, user_id',
         )
         .eq('name', name)
         .eq('birth_date', birthDate)
         .eq('gender', gender)
         .eq('calendar_type', calendarType)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(1)
 
@@ -280,9 +343,10 @@ function App() {
           gender,
           calendar_type: calendarType,
           result: text,
+          user_id: user.id,
         })
         .select(
-          'id, name, birth_date, birth_time, gender, calendar_type, result, created_at',
+          'id, name, birth_date, birth_time, gender, calendar_type, result, created_at, user_id',
         )
         .single()
 
@@ -301,6 +365,68 @@ function App() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="app">
+        <div className="app__veil" aria-hidden="true" />
+        <main className="shell">
+          <p className="error" role="alert">
+            Supabase 환경 변수가 없습니다. Netlify에 VITE_SUPABASE_URL,
+            VITE_SUPABASE_ANON_KEY를 넣고 재배포하세요.
+          </p>
+        </main>
+      </div>
+    )
+  }
+
+  if (authLoading) {
+    return (
+      <div className="app">
+        <div className="app__veil" aria-hidden="true" />
+        <div className="app__glow" aria-hidden="true" />
+        <main className="shell">
+          <p className="auth-status">별을 맞추는 중…</p>
+        </main>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="app">
+        <div className="app__veil" aria-hidden="true" />
+        <div className="app__glow" aria-hidden="true" />
+        <main className="shell">
+          <header className="hero">
+            <p className="brand">사주</p>
+            <h1 className="headline">나의 운명을 읽어 보세요</h1>
+            <p className="lede">
+              Google 계정으로 로그인한 뒤, 당신만의 사주 기록을 남겨 보세요.
+            </p>
+          </header>
+
+          <section className="auth-card">
+            <p className="auth-card__text">
+              로그인하면 사주 해석과 기록이 내 계정에만 안전하게 저장됩니다.
+            </p>
+            <button
+              type="button"
+              className="google-btn"
+              onClick={handleGoogleLogin}
+              disabled={authBusy}
+            >
+              <span className="google-btn__icon" aria-hidden="true">
+                G
+              </span>
+              <span>{authBusy ? 'Google로 이동 중…' : 'Google로 계속하기'}</span>
+            </button>
+            {error && <p className="error" role="alert">{error}</p>}
+          </section>
+        </main>
+      </div>
+    )
   }
 
   return (
@@ -339,6 +465,18 @@ function App() {
       </aside>
 
       <main className="shell">
+        <div className="auth-bar">
+          <p className="auth-bar__user">{getUserLabel(user)}</p>
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={handleSignOut}
+            disabled={authBusy}
+          >
+            로그아웃
+          </button>
+        </div>
+
         <header className="hero">
           <p className="brand">사주</p>
           <h1 className="headline">나의 운명을 읽어 보세요</h1>

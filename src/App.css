@@ -419,10 +419,14 @@
 .field input[type='date'],
 .field input[type='time'] {
   color-scheme: dark;
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  height: 48px;
+  min-height: 48px;
+  line-height: normal;
   box-sizing: border-box;
   -webkit-appearance: none;
   appearance: none;
@@ -431,6 +435,23 @@
 .field input[type='date']::-webkit-date-and-time-value,
 .field input[type='time']::-webkit-date-and-time-value {
   text-align: left;
+  margin: auto 0;
+  line-height: 1.2;
+}
+
+.field input[type='date']::-webkit-datetime-edit,
+.field input[type='time']::-webkit-datetime-edit {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0;
+  line-height: 1.2;
+}
+
+.field input[type='date']::-webkit-datetime-edit-fields-wrapper,
+.field input[type='time']::-webkit-datetime-edit-fields-wrapper {
+  display: flex;
+  align-items: center;
 }
 
 .segment {

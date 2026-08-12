@@ -83,7 +83,38 @@ function App() {
     setResult('')
     setSelectedId(null)
 
+    const normalizedBirthTime = birthTime || null
+
     try {
+      let existingQuery = supabase
+        .from('saju_readings')
+        .select(
+          'id, name, birth_date, birth_time, gender, calendar_type, result, created_at',
+        )
+        .eq('name', name)
+        .eq('birth_date', birthDate)
+        .eq('gender', gender)
+        .eq('calendar_type', calendarType)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      existingQuery = normalizedBirthTime
+        ? existingQuery.eq('birth_time', normalizedBirthTime)
+        : existingQuery.is('birth_time', null)
+
+      const { data: existingRows, error: existingError } = await existingQuery
+
+      if (existingError) {
+        throw existingError
+      }
+
+      const existing = existingRows?.[0]
+      if (existing) {
+        await loadReadings()
+        setSelectedId(existing.id)
+        return
+      }
+
       const prompt = buildSajuPrompt({
         name,
         birthDate,
@@ -99,7 +130,7 @@ function App() {
         .insert({
           name,
           birth_date: birthDate,
-          birth_time: birthTime || null,
+          birth_time: normalizedBirthTime,
           gender,
           calendar_type: calendarType,
           result: text,

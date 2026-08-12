@@ -36,11 +36,15 @@ function App() {
 
   const [result, setResult] = useState('')
   const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [readings, setReadings] = useState([])
   const [selectedId, setSelectedId] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [editResult, setEditResult] = useState('')
 
   const selectedReading = readings.find((reading) => reading.id === selectedId) ?? null
+  const isEditing = Boolean(editingId)
 
   async function loadReadings() {
     if (!isSupabaseConfigured) {
@@ -74,14 +78,146 @@ function App() {
     loadReadings()
   }, [])
 
+  function clearForm() {
+    setName('')
+    setBirthDate('')
+    setBirthTime('')
+    setGender('')
+    setCalendarType('')
+    setResult('')
+    setEditResult('')
+  }
+
   function handleSelectReading(id) {
-    setSelectedId((current) => (current === id ? null : id))
+    if (editingId && editingId !== id) {
+      setEditingId(null)
+      setEditResult('')
+    }
+
+    setSelectedId((current) => {
+      if (current === id) {
+        setEditingId(null)
+        setEditResult('')
+        return null
+      }
+      return id
+    })
     setResult('')
     setError('')
   }
 
+  function handleStartEdit() {
+    if (!selectedReading) return
+
+    setEditingId(selectedReading.id)
+    setName(selectedReading.name)
+    setBirthDate(selectedReading.birth_date)
+    setBirthTime(formatBirthTime(selectedReading.birth_time) || '')
+    setGender(selectedReading.gender)
+    setCalendarType(selectedReading.calendar_type)
+    setEditResult(selectedReading.result)
+    setResult('')
+    setError('')
+  }
+
+  function handleCancelEdit() {
+    setEditingId(null)
+    setEditResult('')
+    clearForm()
+    setError('')
+  }
+
+  async function handleUpdate(e) {
+    e.preventDefault()
+
+    if (!editingId) return
+
+    if (!name || !birthDate || !gender || !calendarType || !editResult.trim()) {
+      setError('이름, 생년월일, 성별, 양력/음력, 결과 내용을 모두 입력해 주세요.')
+      return
+    }
+
+    setSaving(true)
+    setError('')
+
+    try {
+      const { data: updated, error: updateError } = await requireSupabase()
+        .from('saju_readings')
+        .update({
+          name,
+          birth_date: birthDate,
+          birth_time: birthTime || null,
+          gender,
+          calendar_type: calendarType,
+          result: editResult.trim(),
+        })
+        .eq('id', editingId)
+        .select(
+          'id, name, birth_date, birth_time, gender, calendar_type, result, created_at',
+        )
+        .single()
+
+      if (updateError) {
+        throw updateError
+      }
+
+      await loadReadings()
+      setSelectedId(updated.id)
+      setEditingId(null)
+      setEditResult('')
+      clearForm()
+    } catch (err) {
+      console.error(err)
+      setError(err.message || '사주 기록 수정 중 오류가 발생했습니다.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!selectedReading) return
+
+    const ok = window.confirm(
+      `"${selectedReading.name}" 사주 기록을 삭제할까요? 이 작업은 되돌릴 수 없습니다.`,
+    )
+    if (!ok) return
+
+    setSaving(true)
+    setError('')
+
+    try {
+      const { error: deleteError } = await requireSupabase()
+        .from('saju_readings')
+        .delete()
+        .eq('id', selectedReading.id)
+
+      if (deleteError) {
+        throw deleteError
+      }
+
+      if (editingId === selectedReading.id) {
+        setEditingId(null)
+        setEditResult('')
+        clearForm()
+      }
+
+      setSelectedId(null)
+      await loadReadings()
+    } catch (err) {
+      console.error(err)
+      setError(err.message || '사주 기록 삭제 중 오류가 발생했습니다.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function handleAnalyze(e) {
     e.preventDefault()
+
+    if (isEditing) {
+      await handleUpdate(e)
+      return
+    }
 
     if (!name || !birthDate || !gender || !calendarType) {
       setError('이름, 생년월일, 성별, 양력/음력을 모두 입력해 주세요.')
@@ -211,10 +347,30 @@ function App() {
           </p>
         </header>
 
-        {selectedReading && (
+        {selectedReading && !isEditing && (
           <section className="archive" aria-live="polite">
             <div className="archive__orb" aria-hidden="true" />
-            <p className="archive__eyebrow">저장된 사주</p>
+            <div className="archive__header">
+              <p className="archive__eyebrow">저장된 사주</p>
+              <div className="archive__actions">
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={handleStartEdit}
+                  disabled={saving}
+                >
+                  수정
+                </button>
+                <button
+                  type="button"
+                  className="ghost-btn ghost-btn--danger"
+                  onClick={handleDelete}
+                  disabled={saving}
+                >
+                  삭제
+                </button>
+              </div>
+            </div>
             <h2 className="archive__name">{selectedReading.name}</h2>
             <p className="archive__facts">
               <span>{formatBirthDate(selectedReading.birth_date)}</span>
@@ -235,6 +391,10 @@ function App() {
         )}
 
         <form className="form" onSubmit={handleAnalyze}>
+          {isEditing && (
+            <p className="form__banner">기록 수정 중 · 입력값과 결과 내용을 저장할 수 있습니다.</p>
+          )}
+
           <div className="form__grid">
             <label className="field">
               <span className="field__label">이름</span>
@@ -306,22 +466,56 @@ function App() {
                 </button>
               </div>
             </label>
+
+            {isEditing && (
+              <label className="field field--wide">
+                <span className="field__label">사주 결과</span>
+                <textarea
+                  className="field__textarea"
+                  value={editResult}
+                  onChange={(e) => setEditResult(e.target.value)}
+                  rows={12}
+                />
+              </label>
+            )}
           </div>
 
-          <button
-            type="submit"
-            className="analyze-btn"
-            disabled={loading}
-          >
-            <span className="analyze-btn__text">
-              {loading ? '별을 읽고 있어요…' : '사주 해석하기'}
-            </span>
-          </button>
+          {isEditing ? (
+            <div className="form__actions">
+              <button
+                type="button"
+                className="ghost-btn ghost-btn--wide"
+                onClick={handleCancelEdit}
+                disabled={saving}
+              >
+                취소
+              </button>
+              <button
+                type="submit"
+                className="analyze-btn analyze-btn--split"
+                disabled={saving}
+              >
+                <span className="analyze-btn__text">
+                  {saving ? '저장하는 중…' : '수정 저장하기'}
+                </span>
+              </button>
+            </div>
+          ) : (
+            <button
+              type="submit"
+              className="analyze-btn"
+              disabled={loading}
+            >
+              <span className="analyze-btn__text">
+                {loading ? '별을 읽고 있어요…' : '사주 해석하기'}
+              </span>
+            </button>
+          )}
 
           {error && <p className="error" role="alert">{error}</p>}
         </form>
 
-        {!selectedReading && result && (
+        {!selectedReading && !isEditing && result && (
           <section className="result" aria-live="polite">
             <h2 className="result__title">사주 해석 결과</h2>
             <pre className="result-text">{result}</pre>

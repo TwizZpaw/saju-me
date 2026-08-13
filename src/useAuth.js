@@ -1,14 +1,36 @@
 import { useEffect, useState } from 'react'
 import { isSupabaseConfigured, requireSupabase } from './supabase'
 
+function readOAuthErrorFromUrl() {
+  const search = new URLSearchParams(window.location.search)
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+
+  const error =
+    search.get('error_description') ||
+    search.get('error') ||
+    hash.get('error_description') ||
+    hash.get('error')
+
+  if (!error) return ''
+
+  window.history.replaceState({}, document.title, window.location.pathname)
+  return decodeURIComponent(error.replace(/\+/g, ' '))
+}
+
 /**
  * Supabase 세션/유저를 구독한다.
  */
 export function useAuth() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [authError, setAuthError] = useState('')
 
   useEffect(() => {
+    const oauthError = readOAuthErrorFromUrl()
+    if (oauthError) {
+      setAuthError(oauthError)
+    }
+
     if (!isSupabaseConfigured) {
       setUser(null)
       setLoading(false)
@@ -23,6 +45,7 @@ export function useAuth() {
       if (error) {
         console.error(error)
         setUser(null)
+        setAuthError(error.message)
       } else {
         setUser(data.session?.user ?? null)
       }
@@ -43,21 +66,31 @@ export function useAuth() {
   }, [])
 
   async function signInWithGoogle() {
+    setAuthError('')
+    const redirectTo = `${window.location.origin}/`
+
     const { error } = await requireSupabase().auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
+        redirectTo,
+        queryParams: {
+          access_type: 'online',
+          prompt: 'select_account',
+        },
       },
     })
 
     if (error) {
+      setAuthError(error.message)
       throw error
     }
   }
 
   async function signOut() {
+    setAuthError('')
     const { error } = await requireSupabase().auth.signOut()
     if (error) {
+      setAuthError(error.message)
       throw error
     }
   }
@@ -65,6 +98,7 @@ export function useAuth() {
   return {
     user,
     loading,
+    authError,
     signInWithGoogle,
     signOut,
   }

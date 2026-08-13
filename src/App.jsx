@@ -41,6 +41,7 @@ function App() {
   const {
     user,
     loading: authLoading,
+    authError,
     signInWithGoogle,
     signOut,
   } = useAuth()
@@ -86,6 +87,12 @@ function App() {
     setReadings(next)
     return next
   }
+
+  useEffect(() => {
+    if (authError) {
+      setError(authError)
+    }
+  }, [authError])
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -435,48 +442,50 @@ function App() {
       <div className="app__glow" aria-hidden="true" />
 
       <aside className="sidebar" aria-label="저장된 사주 목록">
-        <p className="sidebar__title">기록</p>
-        {readings.length === 0 ? (
-          <p className="sidebar__empty">아직 저장된 사주가 없습니다.</p>
-        ) : (
-          <ul className="sidebar__list">
-            {readings.map((reading) => {
-              const isActive = reading.id === selectedId
-              return (
-                <li key={reading.id}>
-                  <button
-                    type="button"
-                    className={
-                      isActive ? 'sidebar__item is-active' : 'sidebar__item'
-                    }
-                    onClick={() => handleSelectReading(reading.id)}
-                    aria-pressed={isActive}
-                  >
-                    <span className="sidebar__name">{reading.name}</span>
-                    <span className="sidebar__meta">
-                      {formatBirthDate(reading.birth_date)}
-                    </span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </aside>
+        <div className="sidebar__body">
+          <p className="sidebar__title">기록</p>
+          {readings.length === 0 ? (
+            <p className="sidebar__empty">아직 저장된 사주가 없습니다.</p>
+          ) : (
+            <ul className="sidebar__list">
+              {readings.map((reading) => {
+                const isActive = reading.id === selectedId
+                return (
+                  <li key={reading.id}>
+                    <button
+                      type="button"
+                      className={
+                        isActive ? 'sidebar__item is-active' : 'sidebar__item'
+                      }
+                      onClick={() => handleSelectReading(reading.id)}
+                      aria-pressed={isActive}
+                    >
+                      <span className="sidebar__name">{reading.name}</span>
+                      <span className="sidebar__meta">
+                        {formatBirthDate(reading.birth_date)}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
 
-      <main className="shell">
         <div className="auth-bar">
           <p className="auth-bar__user">{getUserLabel(user)}</p>
           <button
             type="button"
-            className="ghost-btn"
+            className="ghost-btn ghost-btn--wide"
             onClick={handleSignOut}
             disabled={authBusy}
           >
             로그아웃
           </button>
         </div>
+      </aside>
 
+      <main className="shell">
         <header className="hero">
           <p className="brand">사주</p>
           <h1 className="headline">나의 운명을 읽어 보세요</h1>

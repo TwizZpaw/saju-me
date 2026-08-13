@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { isSupabaseConfigured, requireSupabase } from './supabase'
+import { isSupabaseConfigured, requireSupabase } from '../lib/supabase'
 
 function readOAuthErrorFromUrl() {
   const search = new URLSearchParams(window.location.search)

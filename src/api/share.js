@@ -1,7 +1,8 @@
-import { requireSupabase } from './supabase'
+import { requireSupabase } from '../lib/supabase'
 
 export function getShareUrl(shareToken) {
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://uunmei.netlify.app'
+  const origin =
+    typeof window !== 'undefined' ? window.location.origin : 'https://uunmei.netlify.app'
   return `${origin}/share.html?t=${shareToken}`
 }
 

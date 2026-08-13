@@ -1,4 +1,4 @@
-import { requireSupabase } from './supabase'
+import { requireSupabase } from '../lib/supabase'
 
 /**
  * 로그인한 사용자의 개인정보(프로필)를 불러온다.

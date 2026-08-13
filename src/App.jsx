@@ -1,9 +1,19 @@
 import { useEffect, useState } from 'react'
 import './App.css'
-import { buildSajuPrompt } from './buildSajuPrompt'
+import { buildSajuPrompt, buildTodayFortunePrompt, stripBonusSection } from './buildSajuPrompt'
 import { askGemini } from './gemini'
+import { loadProfile, upsertProfile } from './profiles'
+import {
+  copyText,
+  fetchSharedReading,
+  getShareUrl,
+  readShareTokenFromUrl,
+} from './shareReading'
 import { isSupabaseConfigured, requireSupabase } from './supabase'
 import { useAuth } from './useAuth'
+
+const READING_FIELDS =
+  'id, name, birth_date, birth_time, gender, calendar_type, result, created_at, user_id, profile_user_id, share_token'
 
 function formatGender(gender) {
   if (gender === 'male') return '남성'
@@ -60,10 +70,33 @@ function App() {
   const [readings, setReadings] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [editingId, setEditingId] = useState(null)
-  const [editResult, setEditResult] = useState('')
+  const [hasProfile, setHasProfile] = useState(false)
+  const [todayFortune, setTodayFortune] = useState('')
+  const [todayFortuneLoading, setTodayFortuneLoading] = useState(false)
+  const [shareToken] = useState(() => readShareTokenFromUrl())
+  const [sharedReading, setSharedReading] = useState(null)
+  const [shareLoading, setShareLoading] = useState(Boolean(readShareTokenFromUrl()))
+  const [shareNotice, setShareNotice] = useState('')
+  const [readingsCount, setReadingsCount] = useState(null)
 
   const selectedReading = readings.find((reading) => reading.id === selectedId) ?? null
   const isEditing = Boolean(editingId)
+  const isShareView = Boolean(shareToken)
+
+  function applyProfileToForm(profile) {
+    if (!profile) {
+      clearForm()
+      setHasProfile(false)
+      return
+    }
+
+    setName(profile.name || '')
+    setBirthDate(profile.birth_date || '')
+    setBirthTime(formatBirthTime(profile.birth_time) || '')
+    setGender(profile.gender || '')
+    setCalendarType(profile.calendar_type || '')
+    setHasProfile(true)
+  }
 
   async function loadReadings() {
     if (!isSupabaseConfigured || !user) {
@@ -73,9 +106,7 @@ function App() {
 
     const { data, error: loadError } = await requireSupabase()
       .from('saju_readings')
-      .select(
-        'id, name, birth_date, birth_time, gender, calendar_type, result, created_at, user_id',
-      )
+      .select(READING_FIELDS)
       .order('created_at', { ascending: false })
 
     if (loadError) {
@@ -88,11 +119,87 @@ function App() {
     return next
   }
 
+  async function loadUserData() {
+    if (!user) return
+
+    try {
+      const profile = await loadProfile(user.id)
+      applyProfileToForm(profile)
+      await loadReadings()
+    } catch (err) {
+      console.error(err)
+      setError(err.message || '저장된 개인정보를 불러오지 못했습니다.')
+    }
+  }
+
   useEffect(() => {
     if (authError) {
       setError(authError)
     }
   }, [authError])
+
+  useEffect(() => {
+    if (!shareToken || !isSupabaseConfigured) {
+      setShareLoading(false)
+      return
+    }
+
+    let cancelled = false
+
+    ;(async () => {
+      setShareLoading(true)
+      try {
+        const reading = await fetchSharedReading(shareToken)
+        if (!cancelled) {
+          setSharedReading(reading)
+          if (!reading) {
+            setError('공유된 사주를 찾을 수 없습니다.')
+          }
+        }
+      } catch (err) {
+        console.error(err)
+        if (!cancelled) {
+          setSharedReading(null)
+          setError(err.message || '공유된 사주를 불러오지 못했습니다.')
+        }
+      } finally {
+        if (!cancelled) {
+          setShareLoading(false)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [shareToken])
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || user || isShareView) return
+
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const { data, error: countError } = await requireSupabase().rpc(
+          'get_saju_readings_count',
+        )
+        if (countError) throw countError
+        if (!cancelled) {
+          setReadingsCount(typeof data === 'number' ? data : Number(data) || 0)
+        }
+      } catch (err) {
+        console.error(err)
+        if (!cancelled) {
+          setReadingsCount(null)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [user, isShareView])
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -106,11 +213,13 @@ function App() {
       setReadings([])
       setSelectedId(null)
       setEditingId(null)
+      setHasProfile(false)
+      clearForm()
       return
     }
 
     setError('')
-    loadReadings()
+    loadUserData()
   }, [user])
 
   function clearForm() {
@@ -120,7 +229,6 @@ function App() {
     setGender('')
     setCalendarType('')
     setResult('')
-    setEditResult('')
   }
 
   async function handleGoogleLogin() {
@@ -144,6 +252,7 @@ function App() {
       setSelectedId(null)
       setEditingId(null)
       setReadings([])
+      setTodayFortune('')
     } catch (err) {
       console.error(err)
       setError(err.message || '로그아웃에 실패했습니다.')
@@ -155,13 +264,13 @@ function App() {
   function handleSelectReading(id) {
     if (editingId && editingId !== id) {
       setEditingId(null)
-      setEditResult('')
     }
 
+    setShareNotice('')
     setSelectedId((current) => {
       if (current === id) {
         setEditingId(null)
-        setEditResult('')
+        setTodayFortune('')
         return null
       }
       return id
@@ -169,6 +278,51 @@ function App() {
     setResult('')
     setError('')
   }
+
+  useEffect(() => {
+    const reading = isShareView ? sharedReading : selectedReading
+    if (!reading || (!isShareView && isEditing)) {
+      if (!reading) {
+        setTodayFortune('')
+        setTodayFortuneLoading(false)
+      }
+      return
+    }
+
+    let cancelled = false
+
+    ;(async () => {
+      setTodayFortuneLoading(true)
+      setTodayFortune('')
+      try {
+        const text = await askGemini(
+          buildTodayFortunePrompt({
+            name: reading.name,
+            birthDate: reading.birth_date,
+            birthTime: formatBirthTime(reading.birth_time) || '',
+            gender: reading.gender,
+            calendarType: reading.calendar_type,
+          }),
+        )
+        if (!cancelled) {
+          setTodayFortune(text)
+        }
+      } catch (err) {
+        console.error(err)
+        if (!cancelled) {
+          setTodayFortune('')
+        }
+      } finally {
+        if (!cancelled) {
+          setTodayFortuneLoading(false)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedId, isEditing, sharedReading, isShareView])
 
   function handleStartEdit() {
     if (!selectedReading) return
@@ -179,16 +333,23 @@ function App() {
     setBirthTime(formatBirthTime(selectedReading.birth_time) || '')
     setGender(selectedReading.gender)
     setCalendarType(selectedReading.calendar_type)
-    setEditResult(selectedReading.result)
     setResult('')
     setError('')
   }
 
   function handleCancelEdit() {
     setEditingId(null)
-    setEditResult('')
-    clearForm()
     setError('')
+    if (hasProfile) {
+      loadProfile(user.id)
+        .then(applyProfileToForm)
+        .catch((err) => {
+          console.error(err)
+          clearForm()
+        })
+    } else {
+      clearForm()
+    }
   }
 
   async function handleUpdate(e) {
@@ -196,8 +357,8 @@ function App() {
 
     if (!editingId || !user) return
 
-    if (!name || !birthDate || !gender || !calendarType || !editResult.trim()) {
-      setError('이름, 생년월일, 성별, 양력/음력, 결과 내용을 모두 입력해 주세요.')
+    if (!name || !birthDate || !gender || !calendarType) {
+      setError('이름, 생년월일, 성별, 양력/음력을 모두 입력해 주세요.')
       return
     }
 
@@ -205,6 +366,18 @@ function App() {
     setError('')
 
     try {
+      await upsertProfile(user.id, {
+        name,
+        birthDate,
+        birthTime,
+        gender,
+        calendarType,
+      })
+      setHasProfile(true)
+
+      const current = readings.find((reading) => reading.id === editingId)
+      const cleanedResult = stripBonusSection(current?.result || '')
+
       const { data: updated, error: updateError } = await requireSupabase()
         .from('saju_readings')
         .update({
@@ -213,12 +386,11 @@ function App() {
           birth_time: birthTime || null,
           gender,
           calendar_type: calendarType,
-          result: editResult.trim(),
+          result: cleanedResult,
+          profile_user_id: user.id,
         })
         .eq('id', editingId)
-        .select(
-          'id, name, birth_date, birth_time, gender, calendar_type, result, created_at, user_id',
-        )
+        .select(READING_FIELDS)
         .single()
 
       if (updateError) {
@@ -228,8 +400,13 @@ function App() {
       await loadReadings()
       setSelectedId(updated.id)
       setEditingId(null)
-      setEditResult('')
-      clearForm()
+      applyProfileToForm({
+        name,
+        birth_date: birthDate,
+        birth_time: birthTime || null,
+        gender,
+        calendar_type: calendarType,
+      })
     } catch (err) {
       console.error(err)
       setError(err.message || '사주 기록 수정 중 오류가 발생했습니다.')
@@ -238,40 +415,22 @@ function App() {
     }
   }
 
-  async function handleDelete() {
-    if (!selectedReading || !user) return
+  async function handleShare() {
+    if (!selectedReading?.share_token) {
+      setError('공유 링크를 만들 수 없습니다. 기록을 다시 불러와 주세요.')
+      return
+    }
 
-    const ok = window.confirm(
-      `"${selectedReading.name}" 사주 기록을 삭제할까요? 이 작업은 되돌릴 수 없습니다.`,
-    )
-    if (!ok) return
-
-    setSaving(true)
-    setError('')
-
+    const url = getShareUrl(selectedReading.share_token)
     try {
-      const { error: deleteError } = await requireSupabase()
-        .from('saju_readings')
-        .delete()
-        .eq('id', selectedReading.id)
-
-      if (deleteError) {
-        throw deleteError
-      }
-
-      if (editingId === selectedReading.id) {
-        setEditingId(null)
-        setEditResult('')
-        clearForm()
-      }
-
-      setSelectedId(null)
-      await loadReadings()
+      await copyText(url)
+      setShareNotice('공유 링크를 복사했어요')
+      setError('')
+      window.setTimeout(() => setShareNotice(''), 2500)
     } catch (err) {
       console.error(err)
-      setError(err.message || '사주 기록 삭제 중 오류가 발생했습니다.')
-    } finally {
-      setSaving(false)
+      setShareNotice('')
+      setError(`링크 복사에 실패했어요. 직접 복사해 주세요: ${url}`)
     }
   }
 
@@ -301,11 +460,18 @@ function App() {
     const normalizedBirthTime = birthTime || null
 
     try {
+      await upsertProfile(user.id, {
+        name,
+        birthDate,
+        birthTime: normalizedBirthTime,
+        gender,
+        calendarType,
+      })
+      setHasProfile(true)
+
       let existingQuery = requireSupabase()
         .from('saju_readings')
-        .select(
-          'id, name, birth_date, birth_time, gender, calendar_type, result, created_at, user_id',
-        )
+        .select(READING_FIELDS)
         .eq('name', name)
         .eq('birth_date', birthDate)
         .eq('gender', gender)
@@ -338,7 +504,7 @@ function App() {
         gender,
         calendarType,
       })
-      const text = await askGemini(prompt)
+      const text = stripBonusSection(await askGemini(prompt))
       setResult(text)
 
       const { data: saved, error: saveError } = await requireSupabase()
@@ -351,10 +517,9 @@ function App() {
           calendar_type: calendarType,
           result: text,
           user_id: user.id,
+          profile_user_id: user.id,
         })
-        .select(
-          'id, name, birth_date, birth_time, gender, calendar_type, result, created_at, user_id',
-        )
+        .select(READING_FIELDS)
         .single()
 
       if (saveError) {
@@ -388,13 +553,92 @@ function App() {
     )
   }
 
-  if (authLoading) {
+  if (authLoading || shareLoading) {
     return (
       <div className="app">
         <div className="app__veil" aria-hidden="true" />
         <div className="app__glow" aria-hidden="true" />
         <main className="shell">
-          <p className="auth-status">별을 맞추는 중…</p>
+          <p className="auth-status">
+            {shareLoading ? '친구의 운명을 불러오는 중…' : '별을 맞추는 중…'}
+          </p>
+        </main>
+      </div>
+    )
+  }
+
+  if (isShareView) {
+    return (
+      <div className="app">
+        <div className="app__veil" aria-hidden="true" />
+        <div className="app__glow" aria-hidden="true" />
+        <main className="shell">
+          <header className="hero">
+            <p className="brand">사주</p>
+            <h1 className="headline">친구의 운명을 읽어 보세요</h1>
+            <p className="lede">친구가 보낸 사주 해석이에요.</p>
+          </header>
+
+          {error && <p className="error" role="alert">{error}</p>}
+
+          {sharedReading ? (
+            <section className="archive" aria-live="polite">
+              <div className="archive__orb" aria-hidden="true" />
+              <div className="archive__header">
+                <p className="archive__eyebrow">공유된 사주</p>
+              </div>
+              <h2 className="archive__name">{sharedReading.name}</h2>
+              <p className="archive__facts">
+                <span>{formatBirthDate(sharedReading.birth_date)}</span>
+                {formatBirthTime(sharedReading.birth_time) && (
+                  <>
+                    <span className="archive__dot" aria-hidden="true" />
+                    <span>{formatBirthTime(sharedReading.birth_time)}</span>
+                  </>
+                )}
+                <span className="archive__dot" aria-hidden="true" />
+                <span>{formatGender(sharedReading.gender)}</span>
+                <span className="archive__dot" aria-hidden="true" />
+                <span>{formatCalendar(sharedReading.calendar_type)}</span>
+              </p>
+              <div className="archive__divider" aria-hidden="true" />
+              <pre className="archive__result">
+                {stripBonusSection(sharedReading.result)}
+              </pre>
+              {todayFortuneLoading ? (
+                <p className="archive__fortune-status">오늘의 운세를 읽고 있어요…</p>
+              ) : (
+                todayFortune && <pre className="archive__bonus">{todayFortune}</pre>
+              )}
+            </section>
+          ) : (
+            <p className="auth-status">공유된 사주를 찾을 수 없습니다.</p>
+          )}
+
+          <section className="auth-card share-cta">
+            {user ? (
+              <a className="google-btn share-cta__link" href="/">
+                내 사주로 돌아가기
+              </a>
+            ) : (
+              <>
+                <p className="auth-card__text">
+                  내 운명도 궁금하다면 Google로 로그인해 보세요.
+                </p>
+                <button
+                  type="button"
+                  className="google-btn"
+                  onClick={handleGoogleLogin}
+                  disabled={authBusy}
+                >
+                  <span className="google-btn__icon" aria-hidden="true">
+                    G
+                  </span>
+                  <span>{authBusy ? 'Google로 이동 중…' : 'Google로 계속하기'}</span>
+                </button>
+              </>
+            )}
+          </section>
         </main>
       </div>
     )
@@ -416,7 +660,9 @@ function App() {
 
           <section className="auth-card">
             <p className="auth-card__text">
-              로그인하면 사주 해석과 기록이 내 계정에만 안전하게 저장됩니다.
+              {readingsCount === null
+                ? '이때까지 생성된 사주를 세는 중…'
+                : `이때까지 ${readingsCount.toLocaleString('ko-KR')}개의 사주가 생성되었습니다.`}
             </p>
             <button
               type="button"
@@ -476,7 +722,7 @@ function App() {
           <p className="auth-bar__user">{getUserLabel(user)}</p>
           <button
             type="button"
-            className="ghost-btn ghost-btn--wide"
+            className="ghost-btn"
             onClick={handleSignOut}
             disabled={authBusy}
           >
@@ -510,14 +756,21 @@ function App() {
                 </button>
                 <button
                   type="button"
-                  className="ghost-btn ghost-btn--danger"
-                  onClick={handleDelete}
+                  className="ghost-btn"
+                  onClick={handleShare}
                   disabled={saving}
                 >
-                  삭제
+                  공유
                 </button>
               </div>
             </div>
+
+            {shareNotice && (
+              <p className="share-notice" role="status">
+                {shareNotice}
+              </p>
+            )}
+
             <h2 className="archive__name">{selectedReading.name}</h2>
             <p className="archive__facts">
               <span>{formatBirthDate(selectedReading.birth_date)}</span>
@@ -533,13 +786,25 @@ function App() {
               <span>{formatCalendar(selectedReading.calendar_type)}</span>
             </p>
             <div className="archive__divider" aria-hidden="true" />
-            <pre className="archive__result">{selectedReading.result}</pre>
+            <pre className="archive__result">
+              {stripBonusSection(selectedReading.result)}
+            </pre>
+            {todayFortuneLoading ? (
+              <p className="archive__fortune-status">오늘의 운세를 읽고 있어요…</p>
+            ) : (
+              todayFortune && (
+                <pre className="archive__bonus">{todayFortune}</pre>
+              )
+            )}
           </section>
         )}
 
+        {(!selectedReading || isEditing) && (
         <form className="form" onSubmit={handleAnalyze}>
           {isEditing && (
-            <p className="form__banner">기록 수정 중 · 입력값과 결과 내용을 저장할 수 있습니다.</p>
+            <p className="form__banner">
+              기록 수정 중 · 개인정보만 수정할 수 있습니다. 사주 결과는 변경되지 않습니다.
+            </p>
           )}
 
           <div className="form__grid">
@@ -613,18 +878,6 @@ function App() {
                 </button>
               </div>
             </label>
-
-            {isEditing && (
-              <label className="field field--wide">
-                <span className="field__label">사주 결과</span>
-                <textarea
-                  className="field__textarea"
-                  value={editResult}
-                  onChange={(e) => setEditResult(e.target.value)}
-                  rows={12}
-                />
-              </label>
-            )}
           </div>
 
           {isEditing ? (
@@ -661,6 +914,13 @@ function App() {
 
           {error && <p className="error" role="alert">{error}</p>}
         </form>
+        )}
+
+        {selectedReading && !isEditing && error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
 
         {!selectedReading && !isEditing && result && (
           <section className="result" aria-live="polite">

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>친구의 운명 보기 · 사주</title>
+    <meta
+      name="description"
+      content="친구가 보낸 사주 해석을 열어 보세요."
+    />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="사주 · saju-me" />
+    <meta property="og:title" content="친구의 운명 보기" />
+    <meta
+      property="og:description"
+      content="친구가 보낸 사주 해석을 열어 보세요."
+    />
+    <meta property="og:image" content="https://uunmei.netlify.app/og-share.png" />
+    <meta property="og:image:alt" content="친구의 운명 보기" />
+    <meta property="og:url" content="https://uunmei.netlify.app/share.html" />
+    <meta property="og:locale" content="ko_KR" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="친구의 운명 보기" />
+    <meta
+      name="twitter:description"
+      content="친구가 보낸 사주 해석을 열어 보세요."
+    />
+    <meta name="twitter:image" content="https://uunmei.netlify.app/og-share.png" />
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #0a0614;
+        color: #f5e9ff;
+        font-family: "Noto Sans KR", sans-serif;
+      }
+      .boot {
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        letter-spacing: 0.04em;
+        opacity: 0.8;
+      }
+    </style>
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search)
+        var token = params.get("t")
+        if (token) {
+          window.location.replace("/?share=" + encodeURIComponent(token))
+        } else {
+          window.location.replace("/")
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <p class="boot">친구의 운명을 불러오는 중…</p>
+  </body>
+</html>

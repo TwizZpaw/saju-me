@@ -53,12 +53,8 @@ export function ReadingArchive({
       <h2 className="archive__name">{reading.name}</h2>
       <p className="archive__facts">
         <span>{formatBirthDate(reading.birth_date)}</span>
-        {formatBirthTime(reading.birth_time) && (
-          <>
-            <span className="archive__dot" aria-hidden="true" />
-            <span>{formatBirthTime(reading.birth_time)}</span>
-          </>
-        )}
+        <span className="archive__dot" aria-hidden="true" />
+        <span>{formatBirthTime(reading.birth_time) || '시간 모름'}</span>
         <span className="archive__dot" aria-hidden="true" />
         <span>{formatGender(reading.gender)}</span>
         <span className="archive__dot" aria-hidden="true" />

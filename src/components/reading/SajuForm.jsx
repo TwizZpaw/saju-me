@@ -39,23 +39,38 @@ export function SajuForm({
         </label>
 
         <label className="field">
-          <span className="field__label">
-            태어난 시간 <em>선택</em>
-          </span>
-          <input
-            type="time"
-            value={birthTime}
-            onChange={(e) => onBirthTimeChange(e.target.value)}
-          />
-        </label>
-
-        <label className="field">
           <span className="field__label">성별</span>
           <select value={gender} onChange={(e) => onGenderChange(e.target.value)}>
             <option value="">선택하세요</option>
             <option value="male">남성</option>
             <option value="female">여성</option>
           </select>
+        </label>
+
+        <label className="field field--wide">
+          <span className="field__label">태어난 시간</span>
+          <div className="field__time">
+            <div className="field__time-input">
+              <input
+                type="time"
+                value={birthTime}
+                onChange={(e) => onBirthTimeChange(e.target.value)}
+                aria-label="태어난 시간"
+              />
+            </div>
+            <button
+              type="button"
+              className={
+                birthTime
+                  ? 'time-unknown-btn'
+                  : 'time-unknown-btn is-active'
+              }
+              onClick={() => onBirthTimeChange('')}
+              aria-pressed={!birthTime}
+            >
+              시간 모름
+            </button>
+          </div>
         </label>
 
         <label className="field field--wide">

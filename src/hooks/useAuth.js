@@ -67,7 +67,7 @@ export function useAuth() {
 
   async function signInWithGoogle() {
     setAuthError('')
-    const redirectTo = `${window.location.origin}/`
+    const redirectTo = 'https://uunmei.netlify.app/'
 
     const { error } = await requireSupabase().auth.signInWithOAuth({
       provider: 'google',

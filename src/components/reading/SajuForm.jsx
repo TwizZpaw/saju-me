@@ -1,31 +1,22 @@
 import { ErrorMessage } from '../common/ErrorMessage'
 
 export function SajuForm({
-  isEditing,
   name,
   birthDate,
   birthTime,
   gender,
   calendarType,
   loading,
-  saving,
   error,
   onNameChange,
   onBirthDateChange,
   onBirthTimeChange,
   onGenderChange,
   onCalendarTypeChange,
-  onCancelEdit,
   onSubmit,
 }) {
   return (
     <form className="form" onSubmit={onSubmit}>
-      {isEditing && (
-        <p className="form__banner">
-          기록 수정 중 · 개인정보만 수정할 수 있습니다. 사주 결과는 변경되지 않습니다.
-        </p>
-      )}
-
       <div className="form__grid">
         <label className="field">
           <span className="field__label">이름</span>
@@ -92,33 +83,11 @@ export function SajuForm({
         </label>
       </div>
 
-      {isEditing ? (
-        <div className="form__actions">
-          <button
-            type="button"
-            className="ghost-btn ghost-btn--wide"
-            onClick={onCancelEdit}
-            disabled={saving}
-          >
-            취소
-          </button>
-          <button
-            type="submit"
-            className="analyze-btn analyze-btn--split"
-            disabled={saving}
-          >
-            <span className="analyze-btn__text">
-              {saving ? '저장하는 중…' : '수정 저장하기'}
-            </span>
-          </button>
-        </div>
-      ) : (
-        <button type="submit" className="analyze-btn" disabled={loading}>
-          <span className="analyze-btn__text">
-            {loading ? '별을 읽고 있어요…' : '사주 해석하기'}
-          </span>
-        </button>
-      )}
+      <button type="submit" className="analyze-btn" disabled={loading}>
+        <span className="analyze-btn__text">
+          {loading ? '별을 읽고 있어요…' : '사주 해석하기'}
+        </span>
+      </button>
 
       <ErrorMessage message={error} />
     </form>

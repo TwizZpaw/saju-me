@@ -9,8 +9,6 @@ export function ShareView({
   user,
   error,
   sharedReading,
-  todayFortune,
-  todayFortuneLoading,
   authBusy,
   onLogin,
 }) {
@@ -28,8 +26,6 @@ export function ShareView({
           <ReadingArchive
             reading={sharedReading}
             eyebrow="공유된 사주"
-            todayFortune={todayFortune}
-            todayFortuneLoading={todayFortuneLoading}
           />
         ) : (
           <p className="auth-status">공유된 사주를 찾을 수 없습니다.</p>

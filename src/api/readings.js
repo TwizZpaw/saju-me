@@ -1,7 +1,7 @@
 import { requireSupabase } from '../lib/supabase'
 
 export const READING_FIELDS =
-  'id, name, birth_date, birth_time, gender, calendar_type, result, today_fortune, created_at, user_id, profile_user_id, share_token'
+  'id, name, birth_date, birth_time, gender, calendar_type, result, created_at, user_id, profile_user_id, share_token'
 
 export async function fetchReadings() {
   const { data, error } = await requireSupabase()
@@ -50,22 +50,10 @@ export async function createReading(payload) {
   return data
 }
 
-export async function updateReading(id, payload) {
-  const { data, error } = await requireSupabase()
-    .from('saju_readings')
-    .update(payload)
-    .eq('id', id)
-    .select(READING_FIELDS)
-    .single()
-
-  if (error) throw error
-  return data
-}
-
-export async function saveTodayFortune(id, todayFortune) {
+export async function deleteReading(id) {
   const { error } = await requireSupabase()
     .from('saju_readings')
-    .update({ today_fortune: todayFortune })
+    .delete()
     .eq('id', id)
 
   if (error) throw error

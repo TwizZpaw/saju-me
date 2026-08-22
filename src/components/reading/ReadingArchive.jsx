@@ -4,17 +4,15 @@ import {
   formatCalendar,
   formatGender,
 } from '../../lib/format'
-import { stripBonusSection } from '../../prompts/buildSajuPrompt'
+import { cleanReadingResult } from '../../prompts/buildSajuPrompt'
 
 export function ReadingArchive({
   reading,
   eyebrow = '저장된 사주',
   showActions = false,
-  saving = false,
+  deleting = false,
   shareNotice = '',
-  todayFortune = '',
-  todayFortuneLoading = false,
-  onEdit,
+  onDelete,
   onShare,
 }) {
   if (!reading) return null
@@ -29,16 +27,16 @@ export function ReadingArchive({
             <button
               type="button"
               className="ghost-btn"
-              onClick={onEdit}
-              disabled={saving}
+              onClick={onDelete}
+              disabled={deleting}
             >
-              수정
+              {deleting ? '삭제하는 중…' : '삭제'}
             </button>
             <button
               type="button"
               className="ghost-btn"
               onClick={onShare}
-              disabled={saving}
+              disabled={deleting}
             >
               공유
             </button>
@@ -67,12 +65,7 @@ export function ReadingArchive({
         <span>{formatCalendar(reading.calendar_type)}</span>
       </p>
       <div className="archive__divider" aria-hidden="true" />
-      <pre className="archive__result">{stripBonusSection(reading.result)}</pre>
-      {todayFortuneLoading ? (
-        <p className="archive__fortune-status">오늘의 운세를 읽고 있어요…</p>
-      ) : (
-        todayFortune && <pre className="archive__bonus">{todayFortune}</pre>
-      )}
+      <pre className="archive__result">{cleanReadingResult(reading.result)}</pre>
     </section>
   )
 }

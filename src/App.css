@@ -184,46 +184,6 @@
   cursor: wait;
 }
 
-.ghost-btn--wide {
-  min-height: 54px;
-  width: 100%;
-  border-radius: 999px;
-  font-size: 0.95rem;
-}
-
-.form__banner {
-  margin-bottom: 16px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 180, 230, 0.28);
-  background: rgba(255, 106, 213, 0.1);
-  color: rgba(255, 236, 250, 0.9);
-  font-size: 0.86rem;
-  letter-spacing: 0.02em;
-  word-break: keep-all;
-}
-
-.form__actions {
-  display: grid;
-  grid-template-columns: 1fr 1.4fr;
-  gap: 10px;
-  margin-top: 22px;
-  align-items: stretch;
-}
-
-.form__actions .ghost-btn,
-.form__actions .analyze-btn {
-  min-height: 54px;
-  height: 54px;
-  margin-top: 0;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.analyze-btn--split {
-  margin-top: 0;
-}
-
 .field__textarea {
   width: 100%;
   min-height: 220px;
@@ -852,24 +812,6 @@
   font-family: var(--font-body);
 }
 
-.archive__bonus {
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid rgba(255, 180, 230, 0.2);
-  white-space: pre-wrap;
-  word-break: keep-all;
-  line-height: 1.8;
-  font-size: 0.98rem;
-  color: rgba(255, 220, 245, 0.92);
-  font-family: var(--font-body);
-}
-
-.archive__fortune-status {
-  margin-top: 16px;
-  color: var(--ink-soft);
-  font-size: 0.9rem;
-}
-
 .share-notice {
   margin-top: 12px;
   color: rgba(255, 220, 245, 0.92);
@@ -986,10 +928,6 @@
     grid-template-columns: 1fr;
     width: 100%;
     max-width: 100%;
-  }
-
-  .form__actions {
-    grid-template-columns: 1fr;
   }
 
   .field,

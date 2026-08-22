@@ -38,8 +38,6 @@ export default function App() {
         user={app.user}
         error={app.error}
         sharedReading={app.sharedReading}
-        todayFortune={app.todayFortune}
-        todayFortuneLoading={app.todayFortuneLoading}
         authBusy={app.authBusy}
         onLogin={app.handleGoogleLogin}
       />
@@ -74,45 +72,40 @@ export default function App() {
           lede="생년월일과 시간을 입력하면, 당신만의 사주를 풀어 드립니다."
         />
 
-        {app.selectedReading && !app.isEditing && (
+        {app.selectedReading && (
           <ReadingArchive
             reading={app.selectedReading}
             showActions
-            saving={app.saving}
+            deleting={app.deleting}
             shareNotice={app.shareNotice}
-            todayFortune={app.todayFortune}
-            todayFortuneLoading={app.todayFortuneLoading}
-            onEdit={app.handleStartEdit}
+            onDelete={app.handleDelete}
             onShare={app.handleShare}
           />
         )}
 
-        {(!app.selectedReading || app.isEditing) && (
+        {!app.selectedReading && (
           <SajuForm
-            isEditing={app.isEditing}
             name={app.name}
             birthDate={app.birthDate}
             birthTime={app.birthTime}
             gender={app.gender}
             calendarType={app.calendarType}
             loading={app.loading}
-            saving={app.saving}
             error={app.error}
             onNameChange={app.setName}
             onBirthDateChange={app.setBirthDate}
             onBirthTimeChange={app.setBirthTime}
             onGenderChange={app.setGender}
             onCalendarTypeChange={app.setCalendarType}
-            onCancelEdit={app.handleCancelEdit}
             onSubmit={app.handleAnalyze}
           />
         )}
 
-        {app.selectedReading && !app.isEditing && (
+        {app.selectedReading && (
           <ErrorMessage message={app.error} />
         )}
 
-        {!app.selectedReading && !app.isEditing && (
+        {!app.selectedReading && (
           <ResultPanel result={app.result} />
         )}
       </main>

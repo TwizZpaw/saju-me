@@ -53,16 +53,8 @@ export function trackShareCopyFail() {
   trackEvent('share_copy', { status: 'error' })
 }
 
-export function trackEditStart() {
-  trackEvent('edit_reading', { action: 'start' })
-}
-
-export function trackEditSave() {
-  trackEvent('edit_reading', { action: 'save' })
-}
-
-export function trackEditCancel() {
-  trackEvent('edit_reading', { action: 'cancel' })
+export function trackDeleteReading() {
+  trackEvent('delete_reading')
 }
 
 export function trackSelectReading(action = 'open') {

@@ -2,11 +2,10 @@ import { useEffect, useState } from 'react'
 import { loadProfile, upsertProfile } from '../api/profiles'
 import {
   createReading,
+  deleteReading,
   fetchReadings,
   fetchReadingsCount,
   findExistingReading,
-  saveTodayFortune,
-  updateReading,
 } from '../api/readings'
 import {
   copyText,
@@ -19,9 +18,7 @@ import {
   trackAnalyzeError,
   trackAnalyzeStart,
   trackAnalyzeSuccess,
-  trackEditCancel,
-  trackEditSave,
-  trackEditStart,
+  trackDeleteReading,
   trackLoginClick,
   trackLogout,
   trackSelectReading,
@@ -32,16 +29,8 @@ import {
 import { askGemini } from '../lib/gemini'
 import { formatBirthTime } from '../lib/format'
 import { isSupabaseConfigured } from '../lib/supabase'
-import {
-  buildSajuPrompt,
-  buildTodayFortunePrompt,
-  stripBonusSection,
-} from '../prompts/buildSajuPrompt'
+import { buildSajuPrompt, cleanReadingResult } from '../prompts/buildSajuPrompt'
 import { useAuth } from './useAuth'
-
-async function generateTodayFortune(input) {
-  return askGemini(buildTodayFortunePrompt(input))
-}
 
 /**
  * 사주 앱의 화면 상태와 주요 액션을 관리한다.
@@ -63,15 +52,11 @@ export function useSajuApp() {
 
   const [result, setResult] = useState('')
   const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [authBusy, setAuthBusy] = useState(false)
   const [error, setError] = useState('')
   const [readings, setReadings] = useState([])
   const [selectedId, setSelectedId] = useState(null)
-  const [editingId, setEditingId] = useState(null)
-  const [hasProfile, setHasProfile] = useState(false)
-  const [todayFortune, setTodayFortune] = useState('')
-  const [todayFortuneLoading, setTodayFortuneLoading] = useState(false)
   const [shareToken] = useState(() => readShareTokenFromUrl())
   const [sharedReading, setSharedReading] = useState(null)
   const [shareLoading, setShareLoading] = useState(Boolean(readShareTokenFromUrl()))
@@ -79,7 +64,6 @@ export function useSajuApp() {
   const [readingsCount, setReadingsCount] = useState(null)
 
   const selectedReading = readings.find((reading) => reading.id === selectedId) ?? null
-  const isEditing = Boolean(editingId)
   const isShareView = Boolean(shareToken)
 
   function clearForm() {
@@ -94,7 +78,6 @@ export function useSajuApp() {
   function applyProfileToForm(profile) {
     if (!profile) {
       clearForm()
-      setHasProfile(false)
       return
     }
 
@@ -103,7 +86,6 @@ export function useSajuApp() {
     setBirthTime(formatBirthTime(profile.birth_time) || '')
     setGender(profile.gender || '')
     setCalendarType(profile.calendar_type || '')
-    setHasProfile(true)
   }
 
   async function loadReadingsList() {
@@ -206,8 +188,6 @@ export function useSajuApp() {
     if (!user) {
       setReadings([])
       setSelectedId(null)
-      setEditingId(null)
-      setHasProfile(false)
       clearForm()
       return
     }
@@ -215,63 +195,6 @@ export function useSajuApp() {
     setError('')
     loadUserData()
   }, [user])
-
-  useEffect(() => {
-    const reading = isShareView ? sharedReading : selectedReading
-    if (!reading || (!isShareView && isEditing)) {
-      if (!reading) {
-        setTodayFortune('')
-        setTodayFortuneLoading(false)
-      }
-      return
-    }
-
-    if (reading.today_fortune) {
-      setTodayFortune(reading.today_fortune)
-      setTodayFortuneLoading(false)
-      return
-    }
-
-    if (isShareView) {
-      setTodayFortune('')
-      setTodayFortuneLoading(false)
-      return
-    }
-
-    let cancelled = false
-
-    ;(async () => {
-      setTodayFortuneLoading(true)
-      try {
-        const text = await generateTodayFortune({
-          name: reading.name,
-          birthDate: reading.birth_date,
-          birthTime: formatBirthTime(reading.birth_time) || '',
-          gender: reading.gender,
-          calendarType: reading.calendar_type,
-        })
-
-        if (cancelled) return
-
-        await saveTodayFortune(reading.id, text)
-        setTodayFortune(text)
-        setReadings((prev) =>
-          prev.map((item) =>
-            item.id === reading.id ? { ...item, today_fortune: text } : item,
-          ),
-        )
-      } catch (err) {
-        console.error(err)
-        if (!cancelled) setTodayFortune('')
-      } finally {
-        if (!cancelled) setTodayFortuneLoading(false)
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [selectedId, isEditing, sharedReading, isShareView, selectedReading?.today_fortune])
 
   async function handleGoogleLogin(source = 'login') {
     trackLoginClick(source)
@@ -294,9 +217,7 @@ export function useSajuApp() {
       await signOut()
       clearForm()
       setSelectedId(null)
-      setEditingId(null)
       setReadings([])
-      setTodayFortune('')
     } catch (err) {
       console.error(err)
       setError(err.message || '로그아웃에 실패했습니다.')
@@ -306,14 +227,10 @@ export function useSajuApp() {
   }
 
   function handleSelectReading(id) {
-    if (editingId && editingId !== id) setEditingId(null)
-
     setShareNotice('')
     setSelectedId((current) => {
       if (current === id) {
         trackSelectReading('close')
-        setEditingId(null)
-        setTodayFortune('')
         return null
       }
       trackSelectReading('open')
@@ -323,87 +240,28 @@ export function useSajuApp() {
     setError('')
   }
 
-  function handleStartEdit() {
-    if (!selectedReading) return
+  async function handleDelete() {
+    if (!selectedReading || !user) return
 
-    trackEditStart()
-    setEditingId(selectedReading.id)
-    setName(selectedReading.name)
-    setBirthDate(selectedReading.birth_date)
-    setBirthTime(formatBirthTime(selectedReading.birth_time) || '')
-    setGender(selectedReading.gender)
-    setCalendarType(selectedReading.calendar_type)
-    setResult('')
+    const confirmed = window.confirm(
+      '이 사주 기록을 삭제할까요?\n삭제하면 되돌릴 수 없어요.',
+    )
+    if (!confirmed) return
+
+    setDeleting(true)
     setError('')
-  }
-
-  function handleCancelEdit() {
-    trackEditCancel()
-    setEditingId(null)
-    setError('')
-    if (hasProfile) {
-      loadProfile(user.id)
-        .then(applyProfileToForm)
-        .catch((err) => {
-          console.error(err)
-          clearForm()
-        })
-    } else {
-      clearForm()
-    }
-  }
-
-  async function handleUpdate(e) {
-    e.preventDefault()
-    if (!editingId || !user) return
-
-    if (!name || !birthDate || !gender || !calendarType) {
-      setError('이름, 생년월일, 성별, 양력/음력을 모두 입력해 주세요.')
-      return
-    }
-
-    setSaving(true)
-    setError('')
+    setShareNotice('')
 
     try {
-      await upsertProfile(user.id, {
-        name,
-        birthDate,
-        birthTime,
-        gender,
-        calendarType,
-      })
-      setHasProfile(true)
-
-      const current = readings.find((reading) => reading.id === editingId)
-      const cleanedResult = stripBonusSection(current?.result || '')
-
-      const updated = await updateReading(editingId, {
-        name,
-        birth_date: birthDate,
-        birth_time: birthTime || null,
-        gender,
-        calendar_type: calendarType,
-        result: cleanedResult,
-        profile_user_id: user.id,
-      })
-
+      await deleteReading(selectedReading.id)
+      trackDeleteReading()
+      setSelectedId(null)
       await loadReadingsList()
-      setSelectedId(updated.id)
-      setEditingId(null)
-      applyProfileToForm({
-        name,
-        birth_date: birthDate,
-        birth_time: birthTime || null,
-        gender,
-        calendar_type: calendarType,
-      })
-      trackEditSave()
     } catch (err) {
       console.error(err)
-      setError(err.message || '사주 기록 수정 중 오류가 발생했습니다.')
+      setError(err.message || '사주 기록을 삭제하지 못했습니다.')
     } finally {
-      setSaving(false)
+      setDeleting(false)
     }
   }
 
@@ -431,11 +289,6 @@ export function useSajuApp() {
   async function handleAnalyze(e) {
     e.preventDefault()
 
-    if (isEditing) {
-      await handleUpdate(e)
-      return
-    }
-
     if (!user) {
       setError('사주를 보려면 Google 로그인이 필요합니다.')
       return
@@ -462,7 +315,6 @@ export function useSajuApp() {
         gender,
         calendarType,
       })
-      setHasProfile(true)
 
       const existing = await findExistingReading({
         userId: user.id,
@@ -487,16 +339,8 @@ export function useSajuApp() {
         gender,
         calendarType,
       })
-      const text = stripBonusSection(await askGemini(prompt))
+      const text = cleanReadingResult(await askGemini(prompt))
       setResult(text)
-
-      const fortuneText = await generateTodayFortune({
-        name,
-        birthDate,
-        birthTime,
-        gender,
-        calendarType,
-      })
 
       const saved = await createReading({
         name,
@@ -505,7 +349,6 @@ export function useSajuApp() {
         gender,
         calendar_type: calendarType,
         result: text,
-        today_fortune: fortuneText,
         user_id: user.id,
         profile_user_id: user.id,
       })
@@ -513,7 +356,6 @@ export function useSajuApp() {
       await loadReadingsList()
       if (saved?.id) {
         setSelectedId(saved.id)
-        setTodayFortune(fortuneText)
         setResult('')
       }
       trackAnalyzeSuccess()
@@ -539,7 +381,6 @@ export function useSajuApp() {
     readings,
     selectedId,
     selectedReading,
-    isEditing,
     name,
     birthDate,
     birthTime,
@@ -547,9 +388,7 @@ export function useSajuApp() {
     calendarType,
     result,
     loading,
-    saving,
-    todayFortune,
-    todayFortuneLoading,
+    deleting,
     shareNotice,
     setName,
     setBirthDate,
@@ -559,9 +398,8 @@ export function useSajuApp() {
     handleGoogleLogin,
     handleSignOut,
     handleSelectReading,
-    handleStartEdit,
+    handleDelete,
     handleShare,
-    handleCancelEdit,
     handleAnalyze,
   }
 }
